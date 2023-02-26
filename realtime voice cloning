@@ -1,0 +1,120 @@
+import torch
+import numpy as np
+from scipy.io.wavfile import write
+
+from encoder import inference as encoder
+from synthesizer.inference import Synthesizer
+from vocoder import inference as vocoder
+
+# Load the pre-trained models
+encoder_weights = "encoder/saved_models/pretrained.pt"
+synthesizer_weights = "synthesizer/saved_models/pretrained/pretrained.pt"
+vocoder_weights = "vocoder/saved_models/pretrained/pretrained.pt"
+
+encoder_model = encoder.load_model(encoder_weights)
+synthesizer_model = Synthesizer(synthesizer_weights)
+vocoder_model = vocoder.load_model(vocoder_weights)
+
+# Define the input text and target speaker
+text = "Hello, how are you?"
+speaker_id = "test"
+
+# Encode the input text and extract speaker embeddings
+text_encoded = encoder_model.embed_utterance(encoder_model.preprocess_wav(text))
+speaker_embed = encoder_model.embed_speaker(speaker_id)
+
+# Synthesize speech from the encoded text and speaker embeddings
+mel_spec, mel_postnet_spec, _, alignment, _ = synthesizer_model.synthesize_spectrograms([text_encoded], [speaker_embed])
+audio = vocoder_model.infer_waveform(mel_postnet_spec)
+
+# Save the output audio file
+write("output.wav", synthesizer_model.sample_rate, audio)
+
+# Synthesize speech from the encoded text and speaker embeddings
+mel_spec, mel_postnet_spec, _, alignment, _ = synthesizer_model.synthesize_spectrograms([text_encoded], [speaker_embed])
+audio = vocoder_model.infer_waveform(mel_postnet_spec)
+
+# Save the output audio file
+write("output.wav", synthesizer_model.sample_rate, audio)
+
+# Visualize the alignment between the input text and the synthesized speech
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(6, 4))
+im = ax.imshow(
+    alignment[0].T,
+    aspect="auto",
+    origin="lower",
+    interpolation="none",
+    cmap="viridis",
+    vmin=0,
+    vmax=1,
+)
+plt.colorbar(im, ax=ax)
+plt.xlabel("Encoder timestep")
+plt.ylabel("Decoder timestep")
+plt.tight_layout()
+plt.show()
+
+another alternative:
+realtime voice cloning software:
+import torch
+import numpy as np
+import sounddevice as sd
+import soundfile as sf
+
+from encoder import inference as encoder
+from synthesizer.inference import Synthesizer
+from vocoder import inference as vocoder
+
+# Load the pre-trained models
+encoder_weights = "encoder/saved_models/pretrained.pt"
+synthesizer_weights = "synthesizer/saved_models/pretrained/pretrained.pt"
+vocoder_weights = "vocoder/saved_models/pretrained/pretrained.pt"
+
+encoder_model = encoder.load_model(encoder_weights)
+synthesizer_model = Synthesizer(synthesizer_weights)
+vocoder_model = vocoder.load_model(vocoder_weights)
+
+# Define the target speaker
+speaker_id = "test"
+
+# Set the sampling rate and duration of the input audio
+sample_rate = 16000
+duration = 5  # seconds
+
+# Define the callback function for recording audio
+def callback(indata, frames, time, status):
+    if status:
+        print(status)
+    audio.append(indata.copy())
+
+# Record audio from the microphone
+audio = []
+with sd.InputStream(channels=1, samplerate=sample_rate, blocksize=int(sample_rate * duration), callback=callback):
+    print("Recording...")
+    sd.sleep(int(sample_rate * duration))
+
+# Concatenate the recorded audio into a single array
+audio = np.concatenate(audio, axis=0)
+
+# Resample the audio to the target sample rate
+audio = audio.astype(np.float32)
+audio = audio / np.abs(audio).max() * 0.999
+audio_resampled = librosa.resample(audio, sample_rate, synthesizer_model.sample_rate)
+
+# Encode the input audio and extract speaker embeddings
+audio_encoded = encoder_model.preprocess_wav(audio_resampled)
+speaker_embed = encoder_model.embed_speaker(speaker_id)
+
+# Synthesize speech from the encoded audio and speaker embeddings
+mel_spec, mel_postnet_spec, _, alignment, _ = synthesizer_model.synthesize_spectrograms([audio_encoded], [speaker_embed])
+audio_synthesized = vocoder_model.infer_waveform(mel_postnet_spec)
+
+# Play the synthesized audio and save it to a file
+sd.play(audio_synthesized, synthesizer_model.sample_rate)
+sf.write("output.wav", audio_synthesized, synthesizer_model.sample_rate)
+
+
+
+
